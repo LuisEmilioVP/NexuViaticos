@@ -10,6 +10,9 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+# Excel files
+*.xlsx
+Rendicion Viaticos (27-08-2025).xls
 
 # Logs
 logs/
@@ -74,7 +77,6 @@ dist
 
 # Gatsby files
 .cache/
-public
 
 # Storybook build outputs
 .out

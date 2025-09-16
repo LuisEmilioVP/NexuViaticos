@@ -4,8 +4,8 @@
 
 | Usuario   | Contraseña         | Propósito             | Permisos |
 | --------- | ------------------ | --------------------- | -------- |
-| `soft_db` | `SoftDB2024!Admin` | Aplicación principal  | db_owner |
-| `soft_ad` | `SoftAD2024!Admin` | Administración/backup | db_owner |
+| `soft_db` | `SoftDB2025!Admin` | Aplicación principal  | db_owner |
+| `soft_ad` | `SoftAD2025!Admin` | Administración/backup | db_owner |
 
 ## 🔧 Comandos de Configuración
 

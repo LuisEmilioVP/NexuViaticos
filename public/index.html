@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="es">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Sistema de Rendición de Gastos v2.0</title>
+		<link rel="stylesheet" href="css/style.css" />
+	</head>
+	<body>
+		<!-- Alertas globales -->
+		<div id="alert-container"></div>
+
+		<!-- PANTALLA LOGIN -->
+		<div id="login-screen">
+			<h1>Bienvenido</h1>
+			<p>Sistema de Rendición de Gastos</p>
+			<form id="login-form" class="login-form">
+				<div class="form-group">
+					<label for="username">Usuario</label>
+					<input type="text" id="username" class="form-control" required />
+				</div>
+				<div class="form-group">
+					<label for="password">Contraseña</label>
+					<input type="password" id="password" class="form-control" required />
+				</div>
+				<div id="login-error"></div>
+				<button type="submit" class="btn btn-primary" style="width: 100%">
+					Ingresar
+				</button>
+				<div class="user-examples">
+					<b>Usuarios de prueba:</b><br />
+					- Usuario: <b>demo</b> | Pass: <b>demo123</b> (Normal)<br />
+					- Usuario: <b>admin</b> | Pass: <b>admin123</b> (Admin)
+				</div>
+			</form>
+		</div>
+
+		<!-- APLICACIÓN PRINCIPAL -->
+		<div id="app-screen" class="container hidden">
+			<div class="header">
+				<div>
+					<h1>Sistema de Rendición</h1>
+					<span id="user-info"></span>
+				</div>
+				<button id="logout-btn" class="btn">Cerrar Sesión</button>
+			</div>
+
+			<!-- Pestañas -->
+			<div class="nav-tabs">
+				<button class="nav-tab active" data-tab="nueva-rendicion">
+					Nueva Rendición
+				</button>
+				<button class="nav-tab" data-tab="historial">Historial</button>
+				<button class="nav-tab" data-tab="viaticos">Viáticos</button>
+				<button
+					id="maintenance-tab-btn"
+					class="nav-tab hidden"
+					data-tab="mantenimiento"
+				>
+					Mantenimiento
+				</button>
+			</div>
+
+			<!-- PESTAÑA: Nueva Rendición -->
+			<div id="nueva-rendicion" class="tab-content active">
+				<!-- Widget Viáticos -->
+				<div class="viaticos-widget" id="viaticos-widget">
+					<!-- Se carga dinámicamente -->
+				</div>
+
+				<form id="rendicion-form">
+					<div class="form-section">
+						<div class="form-group">
+							<label for="empleado" class="required">Empleado</label>
+							<select id="empleado" class="form-control" required></select>
+						</div>
+					</div>
+
+					<fieldset class="expense-adder">
+						<legend>Agregar un Gasto</legend>
+						<div class="form-grid">
+							<div class="form-group">
+								<label for="fecha" class="required">Fecha</label>
+								<input type="date" id="fecha" class="form-control" required />
+							</div>
+							<div class="form-group">
+								<label for="cliente" class="required">Cliente</label>
+								<select id="cliente" class="form-control" required></select>
+							</div>
+							<div class="form-group">
+								<label for="sucursal">Sucursal</label>
+								<select id="sucursal" class="form-control"></select>
+							</div>
+							<div class="form-group" style="grid-column: 1 / -1">
+								<label for="descripcion" class="required">Descripción</label>
+								<input
+									type="text"
+									id="descripcion"
+									class="form-control"
+									placeholder="Ej: Almuerzo con cliente"
+									required
+								/>
+							</div>
+							<div class="form-group">
+								<label for="cuenta" class="required">Tipo de Gasto</label>
+								<select id="cuenta" class="form-control" required></select>
+							</div>
+							<div class="form-group">
+								<label for="numero-cuenta">Número de Cuenta</label>
+								<input
+									type="text"
+									id="numero-cuenta"
+									class="form-control"
+									disabled
+								/>
+							</div>
+							<div class="form-group">
+								<label for="importe-sin-itbis" class="required"
+									>Importe sin ITBIS</label
+								>
+								<input
+									type="number"
+									id="importe-sin-itbis"
+									class="form-control"
+									step="0.01"
+									required
+								/>
+							</div>
+							<div class="form-group">
+								<label for="itbis">ITBIS (18%)</label>
+								<input type="number" id="itbis" class="form-control" step="0.01" />
+							</div>
+							<div class="form-group">
+								<label for="total-gasto">Total Gasto</label>
+								<input type="text" id="total-gasto" class="form-control" disabled />
+							</div>
+						</div>
+						<div style="text-align: right; margin-top: 20px">
+							<button type="button" id="add-gasto-btn" class="btn btn-primary">
+								➕ Agregar Gasto
+							</button>
+						</div>
+					</fieldset>
+				</form>
+
+				<!-- Gastos agregados -->
+				<div id="gastos-agregados-section" class="hidden">
+					<h2>Gastos Agregados a la Rendición</h2>
+					<div class="expenses-header">
+						<span>Tipo / Cliente</span>
+						<span>Descripción</span>
+						<span style="text-align: right">Importe</span>
+						<span style="text-align: right">ITBIS</span>
+						<span></span>
+					</div>
+					<div id="expenses-container"></div>
+					<div class="summary">
+						<div class="summary-item">
+							<span>Subtotal sin ITBIS:</span>
+							<span id="total-sin-itbis">$0.00</span>
+						</div>
+						<div class="summary-item">
+							<span>Total ITBIS:</span>
+							<span id="total-itbis">$0.00</span>
+						</div>
+						<hr
+							style="
+								border: none;
+								border-top: 1px solid var(--medium-gray);
+								margin: 10px 0;
+							"
+						/>
+						<div class="summary-item">
+							<strong>Total General:</strong>
+							<strong id="total-general">$0.00</strong>
+						</div>
+						<div class="summary-actions">
+							<button type="button" id="save-rendicion-btn" class="btn btn-success">
+								💾 Guardar Rendición
+							</button>
+							<button type="button" id="download-excel-btn" class="btn btn-primary">
+								📊 Exportar Excel
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- PESTAÑA: Historial -->
+			<div id="historial" class="tab-content">
+				<div class="table-container">
+					<table class="data-table">
+						<thead>
+							<tr>
+								<th>ID Rendición</th>
+								<th>Fecha</th>
+								<th>Empleado</th>
+								<th>Total</th>
+								<th>Nº Gastos</th>
+								<th>Acciones</th>
+							</tr>
+						</thead>
+						<tbody id="history-body"></tbody>
+					</table>
+				</div>
+			</div>
+
+			<!-- PESTAÑA: Viáticos -->
+			<div id="viaticos" class="tab-content">
+				<div class="maintenance-header">
+					<h2>Gestión de Viáticos</h2>
+					<button id="btn-add-viatico" class="btn btn-primary hidden">
+						➕ Asignar Viático
+					</button>
+				</div>
+				<div id="viaticos-balance-detail">
+					<!-- Balance detallado -->
+				</div>
+			</div>
+
+			<!-- PESTAÑA: Mantenimiento -->
+			<div id="mantenimiento" class="tab-content">
+				<div class="maintenance-header">
+					<h2>Gestión del Sistema</h2>
+					<button id="btn-add-new" class="btn btn-primary">➕ Agregar Nuevo</button>
+				</div>
+				<div class="maintenance-nav">
+					<button class="btn maintenance-nav-btn active" data-entity="users">
+						Usuarios
+					</button>
+					<button class="btn maintenance-nav-btn" data-entity="clients">
+						Clientes
+					</button>
+					<button class="btn maintenance-nav-btn" data-entity="branches">
+						Sucursales
+					</button>
+					<button class="btn maintenance-nav-btn" data-entity="expenseTypes">
+						Tipos de Gasto
+					</button>
+				</div>
+				<div class="table-container" id="maintenance-content">
+					<!-- Contenido dinámico -->
+				</div>
+			</div>
+		</div>
+
+		<!-- MODAL GENÉRICO -->
+		<div id="generic-modal" class="modal-overlay">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h2 id="modal-title"></h2>
+					<button class="close-button">&times;</button>
+				</div>
+				<div id="modal-body"></div>
+				<div class="modal-footer">
+					<button id="modal-cancel-btn" class="btn btn-secondary">Cancelar</button>
+					<button id="modal-save-btn" class="btn btn-primary">Guardar</button>
+				</div>
+			</div>
+		</div>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+		<script src="js/app.js"></script>
+	</body>
+</html>

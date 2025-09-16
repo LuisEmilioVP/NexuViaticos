@@ -115,6 +115,40 @@ BEGIN
 END
 GO
 
+
+-- Tabla de Viáticos
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Viaticos' AND xtype='U')
+BEGIN
+    CREATE TABLE Viaticos (
+      Id INT IDENTITY(1,1) PRIMARY KEY,
+      UsuarioId INT NOT NULL,
+      MontoAsignado DECIMAL(18,2) NOT NULL,
+      FechaAsignacion DATE NOT NULL,
+      FechaVencimiento DATE NOT NULL,
+      Descripcion NVARCHAR(200),
+      Estado NVARCHAR(20) DEFAULT 'Activo' CHECK (Estado IN ('Activo', 'Vencido', 'Liquidado')),
+      FechaCreacion DATETIME2 DEFAULT GETDATE(),
+      FOREIGN KEY (UsuarioId) REFERENCES Usuarios(Id)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MovimientosViaticos' AND xtype='U')
+BEGIN
+    CREATE TABLE MovimientosViaticos (
+      Id INT IDENTITY(1,1) PRIMARY KEY,
+      ViaticoId INT NOT NULL,
+      RendicionId INT NULL,
+      TipoMovimiento NVARCHAR(20) NOT NULL CHECK (TipoMovimiento IN ('Asignacion', 'Gasto', 'Reintegro')),
+      Monto DECIMAL(18,2) NOT NULL,
+      Descripcion NVARCHAR(200),
+      Fecha DATETIME2 DEFAULT GETDATE(),
+      FOREIGN KEY (ViaticoId) REFERENCES Viaticos(Id),
+      FOREIGN KEY (RendicionId) REFERENCES Rendiciones(Id)
+    );
+END
+GO
+
 -- ===================================================================================
 -- INSERTAR DATOS INICIALES
 -- ===================================================================================
@@ -187,39 +221,105 @@ GROUP BY r.Id, r.CodigoRendicion, r.UsuarioId, u.NombreCompleto, u.Username,
          r.FechaCreacion, r.Total, r.Estado, r.EstadoPersonalizado, r.Observaciones;
 GO
 
+-- ===================================================================================
+-- PROCEDIMIENTOS ALMACENADOS
+-- ===================================================================================
+
 -- Procedimiento para obtener rendiciones por usuario
-CREATE OR ALTER PROCEDURE sp_ObtenerRendicionesPorUsuario
+-- CREATE OR ALTER PROCEDURE sp_ObtenerRendicionesPorUsuario
+--     @UsuarioId INT = NULL,
+--     @EsAdmin BIT = 0
+-- AS
+-- BEGIN
+--     SET NOCOUNT ON;
+
+--     IF @EsAdmin = 1
+--     BEGIN
+--         -- Admin ve todas las rendiciones
+--         SELECT * FROM vw_RendicionesDetalle
+--         ORDER BY FechaCreacion DESC;
+--     END
+--     ELSE
+--     BEGIN
+--         -- Usuario normal solo ve sus rendiciones
+--         SELECT * FROM vw_RendicionesDetalle
+--         WHERE UsuarioId = @UsuarioId
+--         ORDER BY FechaCreacion DESC;
+--     END
+-- END
+-- GO
+
+- Obtener rendiciones por usuario
+CREATE PROCEDURE sp_ObtenerRendicionesPorUsuario
     @UsuarioId INT = NULL,
     @EsAdmin BIT = 0
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF @EsAdmin = 1
-    BEGIN
-        -- Admin ve todas las rendiciones
-        SELECT * FROM vw_RendicionesDetalle
-        ORDER BY FechaCreacion DESC;
-    END
-    ELSE
-    BEGIN
-        -- Usuario normal solo ve sus rendiciones
-        SELECT * FROM vw_RendicionesDetalle
-        WHERE UsuarioId = @UsuarioId
-        ORDER BY FechaCreacion DESC;
-    END
+    SELECT
+        r.Id,
+        ('R' + RIGHT('000000' + CAST(r.Id AS VARCHAR(6)), 6)) as CodigoRendicion,
+        r.UsuarioId,
+        u.NombreCompleto AS NombreEmpleado,
+        u.Username,
+        r.FechaCreacion,
+        r.Total,
+        r.Estado,
+        r.EstadoPersonalizado,
+        r.Observaciones,
+        COUNT(g.Id) AS TotalGastos
+    FROM Rendiciones r
+    INNER JOIN Usuarios u ON r.UsuarioId = u.Id
+    LEFT JOIN Gastos g ON r.Id = g.RendicionId
+    WHERE (@EsAdmin = 1 OR r.UsuarioId = @UsuarioId)
+    GROUP BY r.Id, r.UsuarioId, u.NombreCompleto, u.Username,
+             r.FechaCreacion, r.Total, r.Estado, r.EstadoPersonalizado, r.Observaciones
+    ORDER BY r.FechaCreacion DESC;
 END
 GO
 
 -- Procedimiento para obtener detalles de una rendición
-CREATE OR ALTER PROCEDURE sp_ObtenerDetalleRendicion
+-- CREATE OR ALTER PROCEDURE sp_ObtenerDetalleRendicion
+--     @RendicionId INT
+-- AS
+-- BEGIN
+--     SET NOCOUNT ON;
+
+--     -- Información de la rendición
+--     SELECT r.*, u.NombreCompleto AS NombreEmpleado, u.Username
+--     FROM Rendiciones r
+--     INNER JOIN Usuarios u ON r.UsuarioId = u.Id
+--     WHERE r.Id = @RendicionId;
+
+--     -- Gastos de la rendición
+--     SELECT g.*,
+--            tg.Nombre AS TipoGasto,
+--            tg.Cuenta,
+--            c.Nombre AS Cliente,
+--            s.Nombre AS Sucursal,
+--            s.Ubicacion
+--     FROM Gastos g
+--     INNER JOIN TiposGastos tg ON g.TipoGastoId = tg.Id
+--     INNER JOIN Clientes c ON g.ClienteId = c.Id
+--     LEFT JOIN Sucursales s ON g.SucursalId = s.Id
+--     WHERE g.RendicionId = @RendicionId
+--     ORDER BY g.Fecha DESC;
+-- END
+-- GO
+
+-- Obtener detalles de rendición
+CREATE PROCEDURE sp_ObtenerDetalleRendicion
     @RendicionId INT
 AS
 BEGIN
     SET NOCOUNT ON;
 
     -- Información de la rendición
-    SELECT r.*, u.NombreCompleto AS NombreEmpleado, u.Username
+    SELECT r.*,
+           ('R' + RIGHT('000000' + CAST(r.Id AS VARCHAR(6)), 6)) as CodigoRendicion,
+           u.NombreCompleto AS NombreEmpleado,
+           u.Username
     FROM Rendiciones r
     INNER JOIN Usuarios u ON r.UsuarioId = u.Id
     WHERE r.Id = @RendicionId;
@@ -240,6 +340,80 @@ BEGIN
 END
 GO
 
+-- Obtener balance de viáticos
+CREATE PROCEDURE sp_ObtenerBalanceViaticos
+    @UsuarioId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        v.Id,
+        v.MontoAsignado,
+        v.FechaAsignacion,
+        v.FechaVencimiento,
+        v.Descripcion,
+        v.Estado,
+        ISNULL(SUM(CASE WHEN mv.TipoMovimiento = 'Gasto' THEN mv.Monto ELSE 0 END), 0) as MontoGastado,
+        ISNULL(SUM(CASE WHEN mv.TipoMovimiento = 'Reintegro' THEN mv.Monto ELSE 0 END), 0) as MontoReintegrado,
+        v.MontoAsignado - ISNULL(SUM(CASE WHEN mv.TipoMovimiento = 'Gasto' THEN mv.Monto ELSE 0 END), 0) +
+        ISNULL(SUM(CASE WHEN mv.TipoMovimiento = 'Reintegro' THEN mv.Monto ELSE 0 END), 0) as SaldoDisponible,
+        DATEDIFF(day, GETDATE(), v.FechaVencimiento) as DiasRestantes,
+        CASE
+            WHEN DATEDIFF(day, GETDATE(), v.FechaVencimiento) < 0 THEN 'VENCIDO'
+            WHEN DATEDIFF(day, GETDATE(), v.FechaVencimiento) <= 5 THEN 'CRITICO'
+            WHEN DATEDIFF(day, GETDATE(), v.FechaVencimiento) <= 15 THEN 'ALERTA'
+            ELSE 'NORMAL'
+        END as AlertaVencimiento
+    FROM Viaticos v
+    LEFT JOIN MovimientosViaticos mv ON v.Id = mv.ViaticoId
+    WHERE v.UsuarioId = @UsuarioId AND v.Estado = 'Activo'
+    GROUP BY v.Id, v.MontoAsignado, v.FechaAsignacion, v.FechaVencimiento, v.Descripcion, v.Estado
+    ORDER BY v.FechaVencimiento ASC;
+END
+GO
+
+-- Registrar movimiento de viático
+CREATE PROCEDURE sp_RegistrarMovimientoViatico
+    @ViaticoId INT,
+    @RendicionId INT = NULL,
+    @TipoMovimiento NVARCHAR(20),
+    @Monto DECIMAL(18,2),
+    @Descripcion NVARCHAR(200) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO MovimientosViaticos (ViaticoId, RendicionId, TipoMovimiento, Monto, Descripcion)
+    VALUES (@ViaticoId, @RendicionId, @TipoMovimiento, @Monto, @Descripcion);
+
+    -- Actualizar estado del viático
+    UPDATE Viaticos
+    SET Estado = CASE
+        WHEN FechaVencimiento < GETDATE() THEN 'Vencido'
+        ELSE 'Activo'
+    END
+    WHERE Id = @ViaticoId;
+END
+GO
+
+-- Actualizar total de rendición
+CREATE PROCEDURE sp_ActualizarTotalRendicion
+    @RendicionId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE Rendiciones
+    SET Total = (
+        SELECT ISNULL(SUM(ImporteSinItbis + Itbis), 0)
+        FROM Gastos
+        WHERE RendicionId = @RendicionId
+    )
+    WHERE Id = @RendicionId;
+END
+GO
+
 -- Procedimiento para actualizar total de rendición
 CREATE OR ALTER PROCEDURE sp_ActualizarTotalRendicion
     @RendicionId INT
@@ -256,21 +430,69 @@ BEGIN
     WHERE Id = @RendicionId;
 END
 GO
-
 -- ===================================================================================
 -- TRIGGERS
 -- ===================================================================================
 
 -- Trigger para actualizar total de rendición al insertar/actualizar/eliminar gastos
-GO
-CREATE OR ALTER TRIGGER tr_ActualizarTotalRendicion
+-- GO
+-- CREATE OR ALTER TRIGGER tr_ActualizarTotalRendicion
+-- ON Gastos
+-- AFTER INSERT, UPDATE, DELETE
+-- AS
+-- BEGIN
+--     SET NOCOUNT ON;
+
+--     -- Actualizar totales para rendiciones afectadas en INSERT/UPDATE
+--     IF EXISTS(SELECT * FROM inserted)
+--     BEGIN
+--         DECLARE @RendicionId_Insert INT;
+--         DECLARE insert_cursor CURSOR FOR
+--         SELECT DISTINCT RendicionId FROM inserted;
+
+--         OPEN insert_cursor;
+--         FETCH NEXT FROM insert_cursor INTO @RendicionId_Insert;
+
+--         WHILE @@FETCH_STATUS = 0
+--         BEGIN
+--             EXEC sp_ActualizarTotalRendicion @RendicionId = @RendicionId_Insert;
+--             FETCH NEXT FROM insert_cursor INTO @RendicionId_Insert;
+--         END
+
+--         CLOSE insert_cursor;
+--         DEALLOCATE insert_cursor;
+--     END
+
+--     -- Actualizar totales para rendiciones afectadas en DELETE
+--     IF EXISTS(SELECT * FROM deleted)
+--     BEGIN
+--         DECLARE @RendicionId_Delete INT;
+--         DECLARE delete_cursor CURSOR FOR
+--         SELECT DISTINCT RendicionId FROM deleted;
+
+--         OPEN delete_cursor;
+--         FETCH NEXT FROM delete_cursor INTO @RendicionId_Delete;
+
+--         WHILE @@FETCH_STATUS = 0
+--         BEGIN
+--             EXEC sp_ActualizarTotalRendicion @RendicionId = @RendicionId_Delete;
+--             FETCH NEXT FROM delete_cursor INTO @RendicionId_Delete;
+--         END
+
+--         CLOSE delete_cursor;
+--         DEALLOCATE delete_cursor;
+--     END
+-- END
+-- GO
+
+CREATE TRIGGER tr_ActualizarTotalRendicion
 ON Gastos
 AFTER INSERT, UPDATE, DELETE
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Actualizar totales para rendiciones afectadas en INSERT/UPDATE
+    -- Actualizar totales para rendiciones en INSERT/UPDATE
     IF EXISTS(SELECT * FROM inserted)
     BEGIN
         DECLARE @RendicionId_Insert INT;
@@ -290,7 +512,7 @@ BEGIN
         DEALLOCATE insert_cursor;
     END
 
-    -- Actualizar totales para rendiciones afectadas en DELETE
+    -- Actualizar totales para rendiciones en DELETE
     IF EXISTS(SELECT * FROM deleted)
     BEGIN
         DECLARE @RendicionId_Delete INT;
@@ -335,5 +557,9 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Gastos_RendicionId')
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Sucursales_ClienteId')
     CREATE NONCLUSTERED INDEX IX_Sucursales_ClienteId ON Sucursales(ClienteId);
 
-PRINT 'Base de datos creada exitosamente con todas las tablas, procedimientos y datos iniciales.';
+-- Índices en tabla Sucursales
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Viaticos_UsuarioId')
+    CREATE NONCLUSTERED INDEX IX_Viaticos_UsuarioId ON Viaticos(UsuarioId);
+
+PRINT '✅ Base de datos creada exitosamente con todas las tablas y procedimientos';
 GO
